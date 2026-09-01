@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
             NotifyGuardTheme {
                 MainScreen(
                     items = itemsState.value,
+                    appVersion = BuildConfig.VERSION_NAME,
                     serviceConnected = connectedState.value,
                     permissionGranted = permissionState.value,
                     showRevivePrompt = showRevivePromptState.value,

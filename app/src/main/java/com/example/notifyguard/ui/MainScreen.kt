@@ -48,6 +48,7 @@ import com.example.notifyguard.RulesStore
 @Composable
 fun MainScreen(
     items: List<NotificationItem>,
+    appVersion: String,
     serviceConnected: Boolean,
     permissionGranted: Boolean,
     showRevivePrompt: Boolean,
@@ -69,7 +70,16 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("通知哨兵") },
+                title = {
+                    Column {
+                        Text("通知哨兵")
+                        Text(
+                            "v$appVersion",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -238,7 +248,7 @@ private fun StatusRow(
                 modifier = Modifier.weight(1f)
             )
             Text("只看常驻", style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(24.dp))
             Switch(checked = onlyOngoing, onCheckedChange = onOnlyOngoingChange)
         }
     }
