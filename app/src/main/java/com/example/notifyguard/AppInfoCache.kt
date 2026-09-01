@@ -3,11 +3,15 @@ package com.example.notifyguard
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 
 object AppInfoCache {
 
     private val names = LruCache<String, String>(128)
     private val icons = LruCache<String, Drawable>(64)
+    private val bitmaps = LruCache<String, ImageBitmap>(64)
 
     fun appName(pm: PackageManager, pkg: String): String =
         names.get(pkg) ?: try {
@@ -23,6 +27,15 @@ object AppInfoCache {
             val d = pm.getApplicationIcon(pkg)
             icons.put(pkg, d)
             d
+        } catch (e: Exception) {
+            null
+        }
+
+    fun bitmap(pm: PackageManager, pkg: String): ImageBitmap? =
+        bitmaps.get(pkg) ?: try {
+            val b = pm.getApplicationIcon(pkg).toBitmap(width = 96, height = 96).asImageBitmap()
+            bitmaps.put(pkg, b)
+            b
         } catch (e: Exception) {
             null
         }

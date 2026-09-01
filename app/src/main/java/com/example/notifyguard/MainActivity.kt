@@ -4,105 +4,94 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
-import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.NotificationManagerCompat
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import com.example.notifyguard.ui.MainScreen
+import com.example.notifyguard.ui.NotifyGuardTheme
+import com.example.notifyguard.ui.RulesDialog
 
-class MainActivity : AppCompatActivity(), NotificationCenter.Listener {
+class MainActivity : ComponentActivity() {
 
-    private lateinit var adapter: NotificationAdapter
-    private lateinit var cardPermission: LinearLayout
-    private lateinit var tvServiceState: TextView
-    private lateinit var tvCount: TextView
-    private lateinit var tvEmpty: TextView
+    private val itemsState = mutableStateOf<List<NotificationItem>>(emptyList())
+    private val connectedState = mutableStateOf(false)
+    private val permissionState = mutableStateOf(false)
+    private val onlyOngoingState = mutableStateOf(false)
+    private val showRulesState = mutableStateOf(false)
+    private val rulesVersionState = mutableIntStateOf(0)
 
-    private var onlyOngoing = false
-    private var allItems: List<NotificationItem> = emptyList()
+    private val centerListener = object : NotificationCenter.Listener {
+        override fun onNotifications(items: List<NotificationItem>) {
+            itemsState.value = items
+        }
+
+        override fun onServiceState(connected: Boolean) {
+            connectedState.value = connected
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         RulesStore.init(applicationContext)
-        setContentView(R.layout.activity_main)
-
-        cardPermission = findViewById(R.id.card_permission)
-        tvServiceState = findViewById(R.id.tv_service_state)
-        tvCount = findViewById(R.id.tv_count)
-        tvEmpty = findViewById(R.id.tv_empty)
-
-        adapter = NotificationAdapter(
-            onCancel = { item -> cancelNow(item) },
-            onChannel = { item -> openChannelSettings(item) },
-            onRule = { item -> toggleRule(item) }
-        )
-        val recycler = findViewById<RecyclerView>(R.id.recycler)
-        recycler.layoutManager = LinearLayoutManager(this)
-        recycler.adapter = adapter
-
-        findViewById<Button>(R.id.btn_grant).setOnClickListener { openListenerSettings() }
-        findViewById<Button>(R.id.btn_rules).setOnClickListener { showRulesDialog() }
-        findViewById<Button>(R.id.btn_refresh).setOnClickListener {
-            if (GuardListenerService.instance != null) {
-                GuardListenerService.instance?.reapplyRules()
-                Toast.makeText(this, "已刷新", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "监听服务未连接", Toast.LENGTH_SHORT).show()
+        enableEdgeToEdge()
+        setContent {
+            NotifyGuardTheme {
+                MainScreen(
+                    items = itemsState.value,
+                    serviceConnected = connectedState.value,
+                    permissionGranted = permissionState.value,
+                    onlyOngoing = onlyOngoingState.value,
+                    rulesVersion = rulesVersionState.intValue,
+                    onOnlyOngoingChange = { onlyOngoingState.value = it },
+                    onGrantClick = { openListenerSettings() },
+                    onRefresh = { refresh() },
+                    onShowRules = { showRulesState.value = true },
+                    onCancel = { cancelNow(it) },
+                    onChannel = { openChannelSettings(it) },
+                    onRule = { toggleRule(it) }
+                )
+                if (showRulesState.value) {
+                    RulesDialog(
+                        onDismiss = { showRulesState.value = false },
+                        onRulesChanged = { onRulesChanged() }
+                    )
+                }
             }
-            refreshPermissionCard()
-        }
-        findViewById<SwitchCompat>(R.id.switch_ongoing).setOnCheckedChangeListener { _, checked ->
-            onlyOngoing = checked
-            applyFilter()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        NotificationCenter.attach(this)
-        refreshPermissionCard()
+        NotificationCenter.attach(centerListener)
+        permissionState.value = listenerEnabled()
     }
 
     override fun onPause() {
         super.onPause()
-        NotificationCenter.detach(this)
-    }
-
-    override fun onNotifications(items: List<NotificationItem>) {
-        allItems = items
-        applyFilter()
-    }
-
-    override fun onServiceState(connected: Boolean) {
-        refreshPermissionCard()
-    }
-
-    private fun applyFilter() {
-        val shown = if (onlyOngoing) allItems.filter { it.isOngoing } else allItems
-        adapter.setItems(shown)
-        val ongoingCount = allItems.count { it.isOngoing }
-        tvCount.text = "共 ${allItems.size} 条通知 · 常驻 $ongoingCount 条"
-        tvEmpty.visibility = if (shown.isEmpty()) View.VISIBLE else View.GONE
+        NotificationCenter.detach(centerListener)
     }
 
     private fun listenerEnabled(): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
 
-    private fun refreshPermissionCard() {
-        val granted = listenerEnabled()
-        cardPermission.visibility = if (granted) View.GONE else View.VISIBLE
-        tvServiceState.text = when {
-            !granted -> ""
-            NotificationCenter.serviceConnected -> "监听服务运行中"
-            else -> "已授权，等待系统启动监听服务…（若长时间未连接，请重新开关一次授权）"
+    private fun refresh() {
+        permissionState.value = listenerEnabled()
+        val service = GuardListenerService.instance
+        if (service != null) {
+            service.reapplyRules()
+            Toast.makeText(this, "已刷新", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "监听服务未连接，请确认已授权", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun onRulesChanged() {
+        rulesVersionState.intValue++
+        GuardListenerService.instance?.reapplyRules()
     }
 
     private fun openListenerSettings() {
@@ -157,71 +146,6 @@ class MainActivity : AppCompatActivity(), NotificationCenter.Listener {
             RulesStore.add(item.packageName, item.channelId)
             Toast.makeText(this, "已开启自动隐藏: 该渠道新通知将被自动消除", Toast.LENGTH_SHORT).show()
         }
-        GuardListenerService.instance?.reapplyRules()
-        onNotifications(NotificationCenter.current())
-    }
-
-    private fun showRulesDialog() {
-        val rules = RulesStore.rules()
-        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        container.setPadding(pad, pad / 2, pad, pad / 2)
-        val scroll = ScrollView(this).apply { addView(container) }
-
-        var dialog: AlertDialog? = null
-
-        if (rules.isEmpty()) {
-            container.addView(TextView(this).apply {
-                text = "暂无规则。\n\n在通知条目上点「自动隐藏」即可添加；命中规则的新通知会被自动消除。"
-            })
-        } else {
-            rules.sorted().forEach { ruleKey ->
-                val pkg = ruleKey.substringBefore('|')
-                val channel = ruleKey.substringAfter('|').ifEmpty { "(应用级)" }
-                val name = AppInfoCache.appName(packageManager, pkg)
-                val stats = RulesStore.statsOf(ruleKey)
-                val suppressed = RulesStore.isSuppressed(ruleKey)
-
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                }
-                val info = TextView(this).apply {
-                    val extra = if (suppressed) "  [重发过于频繁,已暂停30秒]" else ""
-                    text = "$name\n渠道: $channel · 已消除 ${stats.hits} 次$extra"
-                    layoutParams = LinearLayout.LayoutParams(
-                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                    )
-                }
-                val del = Button(this).apply {
-                    text = "删除"
-                    setOnClickListener {
-                        RulesStore.remove(ruleKey)
-                        GuardListenerService.instance?.reapplyRules()
-                        onNotifications(NotificationCenter.current())
-                        dialog?.dismiss()
-                        showRulesDialog()
-                    }
-                }
-                row.addView(info)
-                row.addView(del)
-                container.addView(row)
-            }
-        }
-
-        val builder = AlertDialog.Builder(this)
-            .setTitle("自动隐藏规则 (${rules.size})")
-            .setView(scroll)
-            .setPositiveButton("关闭", null)
-        if (rules.isNotEmpty()) {
-            builder.setNeutralButton("清空全部") { _, _ ->
-                RulesStore.clearAll()
-                GuardListenerService.instance?.reapplyRules()
-                onNotifications(NotificationCenter.current())
-                Toast.makeText(this, "已清空全部规则", Toast.LENGTH_SHORT).show()
-            }
-        }
-        dialog = builder.create()
-        dialog.show()
+        onRulesChanged()
     }
 }

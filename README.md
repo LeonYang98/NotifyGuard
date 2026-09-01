@@ -2,7 +2,7 @@
 
 安卓通知渠道管理工具 Demo：识别常驻通知 -> 反查所属渠道 -> 一键直达系统渠道设置页永久关闭；对反复重发的「钉子户」通知支持自动隐藏规则（含频控防对抗）。
 
-- 技术栈：Kotlin + 传统 View，minSdk 26（Android 8.0），targetSdk 35
+- 技术栈：Kotlin + Jetpack Compose（Material 3，支持动态取色），minSdk 26（Android 8.0），targetSdk 35
 - 数据全部本地存储，无网络请求
 - 默认排除来电、闹钟、媒体播放类通知
 
