@@ -3,122 +3,210 @@ package com.example.notifyguard
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
-import android.service.notification.NotificationListenerService
-import android.view.View
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.DividerItemDecoration
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.core.app.NotificationManagerCompat
+import com.example.notifyguard.ui.MainScreen
+import com.example.notifyguard.ui.NotifyGuardTheme
+import com.example.notifyguard.ui.RulesDialog
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
-    private lateinit var adapter: NotificationAdapter
-    private val dataListener: () -> Unit = { render() }
+    private val itemsState = mutableStateOf<List<NotificationItem>>(emptyList())
+    private val connectedState = mutableStateOf(false)
+    private val permissionState = mutableStateOf(false)
+    private val onlyOngoingState = mutableStateOf(false)
+    private val showRulesState = mutableStateOf(false)
+    private val showRevivePromptState = mutableStateOf(false)
+    private val rulesVersionState = mutableIntStateOf(0)
+
+    private val reviveHandler = Handler(Looper.getMainLooper())
+
+    private val centerListener = object : NotificationCenter.Listener {
+        override fun onNotifications(items: List<NotificationItem>) {
+            itemsState.value = items
+        }
+
+        override fun onServiceState(connected: Boolean) {
+            connectedState.value = connected
+            evaluateState()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        adapter = NotificationAdapter(
-            onHide = { item ->
-                GuardListenerService.instance?.dismiss(item.key)
-                NotificationCenter.remove(item.key)
-                Toast.makeText(this, "已隐藏；若对方重发，建议改用「自动隐藏」", Toast.LENGTH_SHORT).show()
-            },
-            onChannel = { item -> openChannelSettings(item) },
-            onRule = { item ->
-                RuleStore.add(this, item.pkg, item.channelId)
-                GuardListenerService.instance?.enforceRules()
-                Toast.makeText(this, "已加入自动隐藏：" + item.appName, Toast.LENGTH_SHORT).show()
-                render()
-            }
-        )
-
-        val list = findViewById<RecyclerView>(R.id.rvList)
-        list.layoutManager = LinearLayoutManager(this)
-        list.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
-        list.adapter = adapter
-
-        findViewById<Button>(R.id.btnGrant).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            Toast.makeText(this, "在列表中找到「通知哨兵」并打开开关", Toast.LENGTH_LONG).show()
-        }
-        findViewById<Button>(R.id.btnRefresh).setOnClickListener {
-            val service = GuardListenerService.instance
-            if (service == null) {
-                NotificationListenerService.requestRebind(
-                    ComponentName(this, GuardListenerService::class.java)
+        RulesStore.init(applicationContext)
+        enableEdgeToEdge()
+        setContent {
+            NotifyGuardTheme {
+                MainScreen(
+                    items = itemsState.value,
+                    serviceConnected = connectedState.value,
+                    permissionGranted = permissionState.value,
+                    showRevivePrompt = showRevivePromptState.value,
+                    onlyOngoing = onlyOngoingState.value,
+                    rulesVersion = rulesVersionState.intValue,
+                    onOnlyOngoingChange = { onlyOngoingState.value = it },
+                    onGrantClick = { openListenerSettings() },
+                    onReviveClick = { reviveListener() },
+                    onOpenSettings = { openListenerSettings() },
+                    onRefresh = { refresh() },
+                    onShowRules = { showRulesState.value = true },
+                    onCancel = { cancelNow(it) },
+                    onChannel = { openChannelSettings(it) },
+                    onRule = { toggleRule(it) }
                 )
-                Toast.makeText(this, "正在请求系统重新连接监听服务，请稍候再点刷新", Toast.LENGTH_SHORT).show()
-            } else {
-                service.refreshSnapshot()
-                Toast.makeText(this, "已刷新", Toast.LENGTH_SHORT).show()
+                if (showRulesState.value) {
+                    RulesDialog(
+                        onDismiss = { showRulesState.value = false },
+                        onRulesChanged = { onRulesChanged() }
+                    )
+                }
             }
         }
-        findViewById<Button>(R.id.btnClearRules).setOnClickListener {
-            RuleStore.clear(this)
-            Toast.makeText(this, "已清空自动隐藏规则", Toast.LENGTH_SHORT).show()
-            render()
-        }
-        findViewById<CheckBox>(R.id.cbOnlyOngoing).setOnCheckedChangeListener { _, _ -> render() }
     }
 
     override fun onResume() {
         super.onResume()
-        NotificationCenter.addListener(dataListener)
-        GuardListenerService.instance?.refreshSnapshot()
-        render()
+        NotificationCenter.attach(centerListener)
+        evaluateState()
     }
 
     override fun onPause() {
-        NotificationCenter.removeListener(dataListener)
         super.onPause()
+        NotificationCenter.detach(centerListener)
     }
 
-    private fun render() {
-        val granted = hasNotificationAccess()
-        findViewById<TextView>(R.id.tvStatus).text =
-            if (granted) "通知使用权：已授权" else "通知使用权：未授权，请先点击下方按钮开启"
-        findViewById<Button>(R.id.btnGrant).visibility = if (granted) View.GONE else View.VISIBLE
-
-        val all = NotificationCenter.items
-        val rules = RuleStore.rules(this)
-        adapter.rules = rules
-        val onlyOngoing = findViewById<CheckBox>(R.id.cbOnlyOngoing).isChecked
-        adapter.submitList(if (onlyOngoing) all.filter { it.ongoing } else all)
-
-        findViewById<TextView>(R.id.tvSummary).text =
-            "当前通知 " + all.size + " 条 · 常驻 " + all.count { it.ongoing } + " 条 · 自动隐藏规则 " + rules.size + " 条"
+    override fun onDestroy() {
+        reviveHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
-    private fun hasNotificationAccess(): Boolean {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
-            ?: return false
-        return flat.split(':').any { it.startsWith(packageName) }
+    private fun listenerEnabled(): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
+    private fun evaluateState() {
+        permissionState.value = listenerEnabled()
+        reviveHandler.removeCallbacksAndMessages(null)
+        if (permissionState.value && !NotificationCenter.serviceConnected) {
+            reviveHandler.postDelayed({
+                if (permissionState.value && !NotificationCenter.serviceConnected) {
+                    showRevivePromptState.value = true
+                }
+            }, 2500)
+        } else {
+            showRevivePromptState.value = false
+        }
+    }
+
+    private fun reviveListener() {
+        try {
+            val cn = ComponentName(this, GuardListenerService::class.java)
+            packageManager.setComponentEnabledSetting(
+                cn,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            packageManager.setComponentEnabledSetting(
+                cn,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            showRevivePromptState.value = false
+            reviveHandler.postDelayed({
+                if (NotificationCenter.serviceConnected) {
+                    Toast.makeText(this, "监听服务已恢复", Toast.LENGTH_SHORT).show()
+                } else {
+                    showRevivePromptState.value = true
+                    Toast.makeText(
+                        this,
+                        "未能自动恢复，请点「打开设置」把授权关一次再打开",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }, 2000)
+        } catch (e: Exception) {
+            Toast.makeText(this, "修复失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun refresh() {
+        evaluateState()
+        val service = GuardListenerService.instance
+        if (service != null) {
+            service.reapplyRules()
+            Toast.makeText(this, "已刷新", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "监听服务未连接，请确认已授权", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun onRulesChanged() {
+        rulesVersionState.intValue++
+        GuardListenerService.instance?.reapplyRules()
+    }
+
+    private fun openListenerSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, "无法打开系统设置页", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun cancelNow(item: NotificationItem) {
+        val service = GuardListenerService.instance
+        if (service == null) {
+            Toast.makeText(this, "监听服务未连接，请先完成授权", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            service.cancelNotification(item.key)
+            Toast.makeText(this, "已隐藏", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "隐藏失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun openChannelSettings(item: NotificationItem) {
-        val intent = if (item.channelId.isNotEmpty()) {
-            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, item.pkg)
-                .putExtra(Settings.EXTRA_CHANNEL_ID, item.channelId)
-        } else {
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, item.pkg)
+        if (item.channelId != null) {
+            try {
+                val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, item.packageName)
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, item.channelId)
+                startActivity(intent)
+                Toast.makeText(this, "关闭该渠道即可永久生效", Toast.LENGTH_LONG).show()
+                return
+            } catch (_: Exception) {
+            }
         }
         try {
+            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, item.packageName)
             startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            startActivity(
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, item.pkg)
-            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "跳转失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun toggleRule(item: NotificationItem) {
+        val key = RulesStore.ruleKey(item.packageName, item.channelId)
+        if (RulesStore.has(key)) {
+            RulesStore.remove(key)
+            Toast.makeText(this, "已取消自动隐藏", Toast.LENGTH_SHORT).show()
+        } else {
+            RulesStore.add(item.packageName, item.channelId)
+            Toast.makeText(this, "已开启自动隐藏: 该渠道新通知将被自动消除", Toast.LENGTH_SHORT).show()
+        }
+        onRulesChanged()
     }
 }

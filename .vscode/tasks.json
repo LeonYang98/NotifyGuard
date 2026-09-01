@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "启动虚拟手机（Pixel 7）",
+      "label": "模拟手机",
       "type": "process",
       "command": "${env:LOCALAPPDATA}\\Android\\Sdk\\emulator\\emulator.exe",
       "args": ["-avd","Pixel_7_API36"],
