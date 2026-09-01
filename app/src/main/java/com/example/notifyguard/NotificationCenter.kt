@@ -1,50 +1,50 @@
 package com.example.notifyguard
 
-data class NotificationItem(
-    val key: String,
-    val packageName: String,
-    val title: String,
-    val text: String,
-    val channelId: String?,
-    val isOngoing: Boolean,
-    val postTime: Long
-)
+import android.os.Handler
+import android.os.Looper
 
 object NotificationCenter {
 
-    interface Listener {
-        fun onNotifications(items: List<NotificationItem>)
-        fun onServiceState(connected: Boolean)
-    }
-
     @Volatile
-    private var items: List<NotificationItem> = emptyList()
-
-    @Volatile
-    var serviceConnected: Boolean = false
+    var items: List<NotificationItem> = emptyList()
         private set
 
-    private var listener: Listener? = null
+    private val listeners = mutableSetOf<() -> Unit>()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    fun attach(l: Listener) {
-        listener = l
-        l.onNotifications(items)
-        l.onServiceState(serviceConnected)
+    @Synchronized
+    fun replaceAll(list: List<NotificationItem>) {
+        items = sort(list)
+        notifyChanged()
     }
 
-    fun detach(l: Listener) {
-        if (listener === l) listener = null
+    @Synchronized
+    fun upsert(item: NotificationItem) {
+        items = sort(items.filterNot { it.key == item.key } + item)
+        notifyChanged()
     }
 
-    fun publish(newItems: List<NotificationItem>) {
-        items = newItems
-        listener?.onNotifications(newItems)
+    @Synchronized
+    fun remove(key: String) {
+        items = items.filterNot { it.key == key }
+        notifyChanged()
     }
 
-    fun current(): List<NotificationItem> = items
-
-    fun setConnected(connected: Boolean) {
-        serviceConnected = connected
-        listener?.onServiceState(connected)
+    fun addListener(listener: () -> Unit) {
+        synchronized(listeners) { listeners.add(listener) }
     }
+
+    fun removeListener(listener: () -> Unit) {
+        synchronized(listeners) { listeners.remove(listener) }
+    }
+
+    private fun notifyChanged() {
+        mainHandler.post {
+            synchronized(listeners) { listeners.toList() }.forEach { it.invoke() }
+        }
+    }
+
+    private fun sort(list: List<NotificationItem>) = list.sortedWith(
+        compareByDescending<NotificationItem> { it.ongoing }.thenByDescending { it.postTime }
+    )
 }

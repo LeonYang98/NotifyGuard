@@ -50,10 +50,13 @@ fun MainScreen(
     items: List<NotificationItem>,
     serviceConnected: Boolean,
     permissionGranted: Boolean,
+    showRevivePrompt: Boolean,
     onlyOngoing: Boolean,
     rulesVersion: Int,
     onOnlyOngoingChange: (Boolean) -> Unit,
     onGrantClick: () -> Unit,
+    onReviveClick: () -> Unit,
+    onOpenSettings: () -> Unit,
     onRefresh: () -> Unit,
     onShowRules: () -> Unit,
     onCancel: (NotificationItem) -> Unit,
@@ -96,6 +99,8 @@ fun MainScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (!permissionGranted) {
                 PermissionBanner(onGrantClick)
+            } else if (showRevivePrompt && !serviceConnected) {
+                ReviveCard(onReviveClick, onOpenSettings)
             }
             StatusRow(
                 granted = permissionGranted,
@@ -167,6 +172,41 @@ private fun PermissionBanner(onGrant: () -> Unit) {
 }
 
 @Composable
+private fun ReviveCard(onRevive: () -> Unit, onOpenSettings: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        )
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "监听服务未运行",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+            Text(
+                "授权仍然有效，但监听服务刚被系统回收（国产 ROM 常见）。点「立即修复」尝试自动恢复；若无效，请到设置页把授权开关关一次再打开。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onOpenSettings) { Text("打开设置") }
+                Button(onClick = onRevive) { Text("立即修复") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatusRow(
     granted: Boolean,
     connected: Boolean,
@@ -178,12 +218,12 @@ private fun StatusRow(
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         if (granted) {
             Text(
-                text = if (connected) "监听服务运行中" else "已授权，等待系统启动监听服务…",
+                text = if (connected) "监听服务运行中" else "等待监听服务连接…",
                 style = MaterialTheme.typography.bodySmall,
                 color = if (connected) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.error
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 modifier = Modifier.padding(top = 6.dp)
             )
@@ -198,6 +238,7 @@ private fun StatusRow(
                 modifier = Modifier.weight(1f)
             )
             Text("只看常驻", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.width(10.dp))
             Switch(checked = onlyOngoing, onCheckedChange = onOnlyOngoingChange)
         }
     }
