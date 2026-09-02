@@ -1,0 +1,82 @@
+name: Release
+
+# 推 v* 标签才发布，例如：
+#   git tag v0.4.0 && git push origin v0.4.0
+# 标签里的版本号必须和 app/build.gradle.kts 的 versionName 一致，否则下面会直接失败，
+# 免得 Release 页挂出一个版本号对不上的包。
+on:
+  push:
+    tags:
+      - "v*"
+
+# gh release create 要写权限；默认的 GITHUB_TOKEN 只读。
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # --generate-notes 要靠历史 commit 生成变更说明，浅克隆会拿不全。
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check tag against versionName
+        run: |
+          ver=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$ver" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match versionName $ver in app/build.gradle.kts"
+            exit 1
+          fi
+          echo "APP_VERSION=$ver" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon
+      # 文件名必须是 app-release.apk（带签名）。若只有 app-release-unsigned.apk，
+      # 说明 signingConfig 没生效 —— 这时要炸掉，绝不能把没签名的包发出去。
+      - name: Name the APK
+        run: |
+          src=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$src" ]; then
+            echo "::error::$src not found - the release APK was not signed"
+            ls -l app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          mv "$src" "NotifyGuard-v${APP_VERSION}.apk"
+
+      # 打印证书指纹，方便和本地 keystore 对账。SHA-256 应为
+      # 6E:AC:B5:9E:A1:18:48:E0:5F:7E:EA:B0:40:35:B6:DE:8A:E5:09:78:C0:16:2E:03:BB:18:9C:57:C5:24:92:E7
+      - name: Verify signature
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -z "$apksigner" ]; then
+            echo "::warning::apksigner not found under $ANDROID_HOME/build-tools, skipping the check"
+            exit 0
+          fi
+          "$apksigner" verify --print-certs "NotifyGuard-v${APP_VERSION}.apk"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "NotifyGuard v${APP_VERSION}" \
+            --generate-notes \
+            "NotifyGuard-v${APP_VERSION}.apk"

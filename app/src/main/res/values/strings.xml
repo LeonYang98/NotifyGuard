@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">通知哨兵</string>
-    <string name="listener_service_label">通知哨兵监听服务</string>
+    <string name="app_name">NotifyGuard</string>
+    <string name="listener_service_label">NotifyGuard 通知监听服务</string>
 </resources>

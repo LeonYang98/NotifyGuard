@@ -1,4 +1,4 @@
-# 通知哨兵（NotifyGuard）
+# NotifyGuard
 
 安卓通知管理 Demo（Jetpack Compose 单页面应用）：查看所有通知、识别常驻通知，并提供三种处理动作——立即隐藏、跳转系统渠道设置页、加入自动隐藏规则。
 
@@ -13,6 +13,12 @@
 - **规则管理**：规则列表支持单条删除（取消自动）、一键清空
 - **频控保护**：对方 App 高频重发时自动暂停该规则的压制并标记"重发频繁，暂停中"，避免死循环
 
+## 下载安装
+
+到 [Releases](../../releases) 下载 `NotifyGuard-v<版本>.apk` 直接安装即可（单个通用包，arm64 / arm32 设备都能装；本应用没有 native 代码，不需要按 CPU 架构分包）。
+
+debug 包和 Release 包用的是同一把固定签名（`debug.keystore`，已入库），所以新版本可以直接覆盖安装，不用先卸载旧版。这把密钥和它的口令在本仓库里是公开的，仅适合个人自用分发。
+
 ## 环境要求
 
 - Android Studio 最新稳定版（自带 JDK 17 和 SDK 管理器）
@@ -23,7 +29,7 @@
 1. 用 Android Studio 打开本目录，首次同步会自动下载依赖（联网，需耐心）。
 2. 若提示缺少 compileSdk 35，点界面中的安装提示即可。
 3. Run 安装到设备，或命令行执行 `gradlew.bat assembleDebug` 产出 APK（位于 `app\build\outputs\apk\debug\`）。
-4. 打开 App → 点「去授权」开启「通知哨兵」的通知使用权 → 返回即可看到通知列表。
+4. 打开 App → 点「去授权」开启「NotifyGuard」的通知使用权 → 返回即可看到通知列表。
 
 > 本工程已包含 Gradle Wrapper（`gradlew.bat` + `gradle-wrapper.jar`，Gradle 8.9），无需单独安装 Gradle。
 
@@ -37,7 +43,20 @@
 | `app/src/main/java/com/example/notifyguard/NotificationCenter.kt` | 通知快照的内存中心，向 UI 推送变更 |
 | `app/src/main/java/com/example/notifyguard/AppInfoCache.kt` | 应用名称/图标缓存 |
 | `app/src/main/java/com/example/notifyguard/ui/MainScreen.kt` | Compose 主界面：授权卡片、列表、规则区 |
-| `.github/workflows/build.yml` | 云端构建流水线 |
+| `.github/workflows/build.yml` | 云端构建：每次推分支产出 debug APK（Actions artifact） |
+| `.github/workflows/release.yml` | 推 `v*` 标签时构建 release APK 并发布到 Releases |
+
+## 发布新版本
+
+1. 改 `app/build.gradle.kts` 里的 `versionCode` / `versionName`，提交。
+2. 打标签推上去，标签名必须是 `v` + `versionName`（对不上 CI 会直接失败）：
+
+   ```bash
+   git tag v0.4.0
+   git push origin v0.4.0
+   ```
+
+3. Actions 跑完后 Releases 页会出现 `NotifyGuard-v0.4.0.apk`，变更说明由 commit 自动生成。
 
 ## 技术要点
 

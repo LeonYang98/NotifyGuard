@@ -2,6 +2,8 @@ name: Build APK
 
 on:
   push:
+    # '**' 匹配所有分支但不含 tag —— tag 推送交给 release.yml，避免同一次推送跑两遍。
+    branches: ["**"]
   workflow_dispatch:
 
 jobs:
@@ -36,5 +38,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notifyguard-v${{ env.APP_VERSION }}-r${{ github.run_number }}.apk
+          name: NotifyGuard-v${{ env.APP_VERSION }}-r${{ github.run_number }}-debug.apk
           path: app/build/outputs/apk/debug/app-debug.apk

@@ -6,9 +6,10 @@ local.properties
 *.iml
 .cxx/
 
-# 注意：仓库根的 debug.keystore 是故意提交的 —— 本地和 CI 共用同一个固定 debug
-# 签名，这样从 Actions 下载的 APK 可以直接覆盖安装，不用先卸载旧版。
-# 仅限 debug！release 密钥绝不入库：
+# 注意：仓库根的 debug.keystore 是故意提交的 —— 本地、CI 的 debug 包和 Release 页
+# 的 release 包全用它，签名恒定，所以下载下来可以直接覆盖安装、不用先卸载旧版。
+# 仓库是 public，这把密钥和它的口令都是公开的，只适合个人自用分发。
+# 真正需要保密的签名材料（上应用市场用的）绝不入库：
 *.jks
 release.keystore
 keystore.properties
