@@ -5,3 +5,11 @@ local.properties
 .idea/
 *.iml
 .cxx/
+
+# 注意：仓库根的 debug.keystore 是故意提交的 —— 本地和 CI 共用同一个固定 debug
+# 签名，这样从 Actions 下载的 APK 可以直接覆盖安装，不用先卸载旧版。
+# 仅限 debug！release 密钥绝不入库：
+*.jks
+release.keystore
+keystore.properties
+signing.properties

@@ -14,13 +14,23 @@ android {
         applicationId = "com.example.notifyguard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.3.3"
+        versionCode = 7
+        versionName = "0.3.4"
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "notifyguard"
+            keyAlias = "notifyguard"
+            keyPassword = "notifyguard"
+            storeType = "PKCS12"
+        }
     }
 
     compileOptions {

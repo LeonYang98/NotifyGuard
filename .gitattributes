@@ -1,0 +1,17 @@
+# 默认：文本自动检测，统一按 LF 入库。
+# 必须写在最前面 —— gitattributes 是"后面的行覆盖前面的行"，
+# 这行放到下面的 binary 之后会把 -text 覆盖掉，防护就失效了。
+* text=auto
+
+# 密钥是二进制：禁止任何换行符转换。
+# 本机 core.autocrlf=true，一旦 git 把 keystore 误判成文本，
+# 提交时的 CRLF -> LF 归一化会永久损坏这个 blob，
+# 而症状只会是 CI 上一句莫名的 "keystore password was incorrect"。
+*.keystore binary
+*.jks      binary
+
+# 这几类必须保持各自平台的换行符，否则脚本执行不了
+gradlew text eol=lf
+*.sh    text eol=lf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf

@@ -6,6 +6,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- 墨绿渐变底：左上 -> 右下 -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -13,10 +14,30 @@
                 android:startX="0"
                 android:startY="0"
                 android:endX="108"
-                android:endY="108"
-                android:startColor="#0A3A3C"
-                android:centerColor="#0E7A63"
-                android:endColor="#12B981" />
+                android:endY="108">
+                <item android:offset="0.0" android:color="#0C4130" />
+                <item android:offset="0.55" android:color="#07291E" />
+                <item android:offset="1.0" android:color="#041C15" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!--
+        亮玉绿大弧（参考图弧线的镜像，向右外凸）：
+        圆心 (4.5,54)、半径 67.5 —— 上边 x=45 入、右凸至 x=72、下边 x=45 出。
+        跨角约 106°，故 large-arc=0、sweep=1。
+    -->
+    <path android:pathData="M0,0 H45 A67.5,67.5 0 0 1 45,108 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="72"
+                android:endY="108">
+                <item android:offset="0.0" android:color="#23996E" />
+                <item android:offset="1.0" android:color="#0E5B42" />
+            </gradient>
         </aapt:attr>
     </path>
 
