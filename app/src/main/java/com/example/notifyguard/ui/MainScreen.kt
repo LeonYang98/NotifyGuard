@@ -57,12 +57,14 @@ fun MainScreen(
     showRevivePrompt: Boolean,
     onlyOngoing: Boolean,
     rulesVersion: Int,
+    historyCount: Int,
     onOnlyOngoingChange: (Boolean) -> Unit,
     onGrantClick: () -> Unit,
     onReviveClick: () -> Unit,
     onOpenSettings: () -> Unit,
     onRefresh: () -> Unit,
     onShowRules: () -> Unit,
+    onShowHistory: () -> Unit,
     onCancel: (NotificationItem) -> Unit,
     onChannel: (NotificationItem) -> Unit,
     onRule: (NotificationItem) -> Unit
@@ -80,6 +82,14 @@ fun MainScreen(
                             "v$appVersion",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onShowHistory) {
+                        Text(
+                            text = if (historyCount > 0) "隐藏历史 ($historyCount)" else "隐藏历史",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 },

@@ -21,6 +21,7 @@ class GuardListenerService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         RulesStore.init(applicationContext)
+        HistoryStore.init(applicationContext)
     }
 
     override fun onListenerConnected() {
@@ -69,6 +70,15 @@ class GuardListenerService : NotificationListenerService() {
         if (RulesStore.onRuleMatched(ruleKey)) {
             try {
                 cancelNotification(sbn.key)
+                // cancel 不会动我们手上这个 sbn，extras 照样读得到，所以先撤后记档。
+                HistoryStore.add(
+                    packageName = sbn.packageName,
+                    title = extraOf(sbn, Notification.EXTRA_TITLE),
+                    text = extraOf(sbn, Notification.EXTRA_TEXT),
+                    channelId = channelIdOf(sbn),
+                    ruleKey = ruleKey,
+                    auto = true
+                )
             } catch (_: Exception) {
             }
         }
@@ -83,17 +93,19 @@ class GuardListenerService : NotificationListenerService() {
 
     private fun channelIdOf(sbn: StatusBarNotification): String? = sbn.notification?.channelId
 
+    private fun extraOf(sbn: StatusBarNotification, key: String): String =
+        sbn.notification?.extras?.getCharSequence(key)?.toString().orEmpty()
+
     private fun publish() {
         val items = activeNotifications.orEmpty()
             .filter { shouldHandle(it) }
             .sortedByDescending { it.postTime }
             .map { sbn ->
-                val extras = sbn.notification?.extras
                 NotificationItem(
                     key = sbn.key,
                     packageName = sbn.packageName,
-                    title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
-                    text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty(),
+                    title = extraOf(sbn, Notification.EXTRA_TITLE),
+                    text = extraOf(sbn, Notification.EXTRA_TEXT),
                     channelId = channelIdOf(sbn),
                     isOngoing = sbn.isOngoing,
                     postTime = sbn.postTime

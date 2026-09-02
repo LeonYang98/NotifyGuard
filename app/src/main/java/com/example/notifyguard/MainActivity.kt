@@ -14,7 +14,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.core.app.NotificationManagerCompat
+import com.example.notifyguard.ui.HistoryScreen
 import com.example.notifyguard.ui.MainScreen
 import com.example.notifyguard.ui.NotifyGuardTheme
 import com.example.notifyguard.ui.RulesDialog
@@ -26,14 +28,18 @@ class MainActivity : ComponentActivity() {
     private val permissionState = mutableStateOf(false)
     private val onlyOngoingState = mutableStateOf(false)
     private val showRulesState = mutableStateOf(false)
+    private val showHistoryState = mutableStateOf(false)
     private val showRevivePromptState = mutableStateOf(false)
     private val rulesVersionState = mutableIntStateOf(0)
+    private val historyVersionState = mutableIntStateOf(0)
 
     private val reviveHandler = Handler(Looper.getMainLooper())
 
     private val centerListener = object : NotificationCenter.Listener {
         override fun onNotifications(items: List<NotificationItem>) {
             itemsState.value = items
+            // 自动隐藏后监听服务紧跟着会 publish 一次，借这个时机把历史计数同步过来。
+            syncHistoryVersion()
         }
 
         override fun onServiceState(connected: Boolean) {
@@ -45,32 +51,49 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         RulesStore.init(applicationContext)
+        HistoryStore.init(applicationContext)
+        syncHistoryVersion()
         enableEdgeToEdge()
         setContent {
             NotifyGuardTheme {
-                MainScreen(
-                    items = itemsState.value,
-                    appVersion = BuildConfig.VERSION_NAME,
-                    serviceConnected = connectedState.value,
-                    permissionGranted = permissionState.value,
-                    showRevivePrompt = showRevivePromptState.value,
-                    onlyOngoing = onlyOngoingState.value,
-                    rulesVersion = rulesVersionState.intValue,
-                    onOnlyOngoingChange = { onlyOngoingState.value = it },
-                    onGrantClick = { openListenerSettings() },
-                    onReviveClick = { reviveListener() },
-                    onOpenSettings = { openListenerSettings() },
-                    onRefresh = { refresh() },
-                    onShowRules = { showRulesState.value = true },
-                    onCancel = { cancelNow(it) },
-                    onChannel = { openChannelSettings(it) },
-                    onRule = { toggleRule(it) }
-                )
-                if (showRulesState.value) {
-                    RulesDialog(
-                        onDismiss = { showRulesState.value = false },
-                        onRulesChanged = { onRulesChanged() }
+                if (showHistoryState.value) {
+                    HistoryScreen(
+                        historyVersion = historyVersionState.intValue,
+                        rulesVersion = rulesVersionState.intValue,
+                        onBack = { showHistoryState.value = false },
+                        onRestore = { restoreFromHistory(it) },
+                        onDelete = { deleteHistory(it) },
+                        onClearAll = { clearHistory() }
                     )
+                } else {
+                    // 读一下 historyVersion，历史有增减时顶栏那个计数才会跟着重组。
+                    val historyVersion = historyVersionState.intValue
+                    MainScreen(
+                        items = itemsState.value,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        serviceConnected = connectedState.value,
+                        permissionGranted = permissionState.value,
+                        showRevivePrompt = showRevivePromptState.value,
+                        onlyOngoing = onlyOngoingState.value,
+                        rulesVersion = rulesVersionState.intValue,
+                        historyCount = remember(historyVersion) { HistoryStore.count() },
+                        onOnlyOngoingChange = { onlyOngoingState.value = it },
+                        onGrantClick = { openListenerSettings() },
+                        onReviveClick = { reviveListener() },
+                        onOpenSettings = { openListenerSettings() },
+                        onRefresh = { refresh() },
+                        onShowRules = { showRulesState.value = true },
+                        onShowHistory = { showHistoryState.value = true },
+                        onCancel = { cancelNow(it) },
+                        onChannel = { openChannelSettings(it) },
+                        onRule = { toggleRule(it) }
+                    )
+                    if (showRulesState.value) {
+                        RulesDialog(
+                            onDismiss = { showRulesState.value = false },
+                            onRulesChanged = { onRulesChanged() }
+                        )
+                    }
                 }
             }
         }
@@ -172,10 +195,53 @@ class MainActivity : ComponentActivity() {
         }
         try {
             service.cancelNotification(item.key)
+            HistoryStore.add(
+                packageName = item.packageName,
+                title = item.title,
+                text = item.text,
+                channelId = item.channelId,
+                ruleKey = RulesStore.ruleKey(item.packageName, item.channelId),
+                auto = false
+            )
+            syncHistoryVersion()
             Toast.makeText(this, "已隐藏", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "隐藏失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun syncHistoryVersion() {
+        historyVersionState.intValue = HistoryStore.version()
+    }
+
+    /**
+     * 「恢复」能做的就是撤掉这条记录对应的自动隐藏规则 —— 用户担心的误触正是这个。
+     * 已经被 cancelNotification 撤掉的那条通知没有接口能放回通知栏，只能靠历史里的正文查看。
+     */
+    private fun restoreFromHistory(record: HistoryStore.Record) {
+        val hadRule = RulesStore.has(record.ruleKey)
+        if (hadRule) {
+            RulesStore.remove(record.ruleKey)
+            onRulesChanged()
+        }
+        HistoryStore.markRestored(record.id)
+        syncHistoryVersion()
+        Toast.makeText(
+            this,
+            if (hadRule) "已撤销规则，这类通知不再自动隐藏" else "该规则本来就已不存在",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun deleteHistory(record: HistoryStore.Record) {
+        HistoryStore.delete(record.id)
+        syncHistoryVersion()
+    }
+
+    private fun clearHistory() {
+        HistoryStore.clearAll()
+        syncHistoryVersion()
+        Toast.makeText(this, "已清空隐藏历史", Toast.LENGTH_SHORT).show()
     }
 
     private fun openChannelSettings(item: NotificationItem) {
