@@ -35,8 +35,16 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon
 
+      # upload-artifact 的 name 只决定下载下来那个 zip 叫什么，zip 里的文件名它不会动 ——
+      # 所以必须先把 app-debug.apk 自己改名，否则解压出来还是 app-debug.apk。
+      - name: Name the APK
+        run: |
+          mv app/build/outputs/apk/debug/app-debug.apk \
+             "NotifyGuard-Alpha-v${APP_VERSION}-r${GITHUB_RUN_NUMBER}.apk"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NotifyGuard-v${{ env.APP_VERSION }}-r${{ github.run_number }}-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          # 故意不带 .apk 后缀：下载得到的是 zip，名字里再挂个 .apk 容易让人以为下错东西。
+          name: NotifyGuard-Alpha-v${{ env.APP_VERSION }}-r${{ github.run_number }}
+          path: NotifyGuard-Alpha-v${{ env.APP_VERSION }}-r${{ github.run_number }}.apk

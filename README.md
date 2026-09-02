@@ -17,6 +17,15 @@
 
 到 [Releases](../../releases) 下载 `NotifyGuard-v<版本>.apk` 直接安装即可（单个通用包，arm64 / arm32 设备都能装；本应用没有 native 代码，不需要按 CPU 架构分包）。
 
+两条分发渠道，名字上区分开：
+
+| 渠道 | 文件名 | 触发方式 |
+|------|--------|----------|
+| Releases（正式） | `NotifyGuard-v<版本>.apk` | 推 `v*` 标签 |
+| Actions（测试） | `NotifyGuard-Alpha-v<版本>-r<次数>.apk` | 每次推分支自动构建 |
+
+Actions 那个 artifact 下载下来是 zip，解压后就是上表里的 `.apk`。
+
 debug 包和 Release 包用的是同一把固定签名（`debug.keystore`，已入库），所以新版本可以直接覆盖安装，不用先卸载旧版。这把密钥和它的口令在本仓库里是公开的，仅适合个人自用分发。
 
 ## 环境要求
@@ -43,7 +52,7 @@ debug 包和 Release 包用的是同一把固定签名（`debug.keystore`，已�
 | `app/src/main/java/com/example/notifyguard/NotificationCenter.kt` | 通知快照的内存中心，向 UI 推送变更 |
 | `app/src/main/java/com/example/notifyguard/AppInfoCache.kt` | 应用名称/图标缓存 |
 | `app/src/main/java/com/example/notifyguard/ui/MainScreen.kt` | Compose 主界面：授权卡片、列表、规则区 |
-| `.github/workflows/build.yml` | 云端构建：每次推分支产出 debug APK（Actions artifact） |
+| `.github/workflows/build.yml` | 云端构建：每次推分支产出 `NotifyGuard-Alpha-v<版本>-r<次数>.apk`（Actions artifact） |
 | `.github/workflows/release.yml` | 推 `v*` 标签时构建 release APK 并发布到 Releases |
 
 ## 发布新版本
